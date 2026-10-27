@@ -2,21 +2,30 @@ import Aluno from "../model/Alunos.js";
 
 class alunoService {
     // Método para cadastrar um aluno
-    async Create(nome, RA, sala, ano, temAcesso) {
-        try {
-            const newAluno = new Aluno({
-                nome,
-                RA,
-                sala,
-                ano,
-                temAcesso // Salvando o status de acesso no cadastro do aluno
-            });
-            await newAluno.save();
-        } catch (error) {
-            console.log(error);
-            throw error;
+// Altere apenas o método Create dentro da classe alunoService:
+async Create(nome, RA, sala, ano, temAcesso) {
+    try {
+        // Se o que chegar for uma lista (Array), ele salva todos juntos de uma vez só
+        if (Array.isArray(nome)) {
+            await Aluno.insertMany(nome);
+            return;
         }
+
+        // Caso contrário, continua salvando um aluno individual normalmente
+        const newAluno = new Aluno({
+            nome,
+            RA,
+            sala,
+            ano,
+            temAcesso
+        });
+        await newAluno.save();
+    } catch (error) {
+        console.log(error);
+        throw error;
     }
+}
+
 
     // Método para listar todos os alunos
     async getAll() {

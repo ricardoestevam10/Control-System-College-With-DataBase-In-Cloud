@@ -2,13 +2,18 @@ import alunoService from "../services/alunoService.js";
 
 const createAluno = async (req, res) => {
     try { 
-        // Adicionado 'temAcesso' recebido do formulário front-end
-        const { nome, RA, sala, ano, temAcesso } = req.body;
-
-        // Repassando 'temAcesso' para o service criar o registro no banco
-        await alunoService.Create(nome, RA, sala, ano, temAcesso);
+        // Verifica se o corpo da requisição é um Array (Lista do Insomnia)
+        if (Array.isArray(req.body)) {
+            // Envia a lista inteira direto para o Service tratar com insertMany
+            await alunoService.Create(req.body);
+            console.log("Lote de novos alunos criados via carga!");
+        } else {
+            // Se for um único aluno (vindo do formulário da tela)
+            const { nome, RA, sala, ano, temAcesso } = req.body;
+            await alunoService.Create(nome, RA, sala, ano, temAcesso);
+            console.log("Novo aluno individual criado!");
+        }
         
-        console.log("Novo aluno Criado");
         res.sendStatus(201);
     } catch (error) {
         console.log(error);
@@ -30,10 +35,8 @@ const getAllAlunos = async (req, res) => {
 const updateAluno = async (req, res) => {
     try {
         const { id } = req.params; 
-        // Adicionado também o 'temAcesso' aqui para manter a consistência dos dados ao atualizar
         const { nome, RA, sala, ano, atividadeEntregue, temAcesso } = req.body;
 
-        // Passando todos os parâmetros atualizados para o seu service
         await alunoService.update(id, nome, RA, sala, ano, atividadeEntregue, temAcesso); 
 
         console.log(`Aluno com ID ${id} atualizado`);

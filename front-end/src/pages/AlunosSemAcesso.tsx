@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Search } from 'lucide-react'; // Adicionado o ícone Search
 
 interface Aluno {
   _id: string;
@@ -14,6 +14,9 @@ interface Aluno {
 export default function AlunosSemAcesso() {
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  
+  // Novo estado para armazenar o termo digitado na barra de busca
+  const [termoBusca, setTermoBusca] = useState<string>('');
 
   // Estados para o formulário de cadastro/edição rápido
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -132,7 +135,7 @@ export default function AlunosSemAcesso() {
       const response = await fetch(`http://localhost:8080/aluno/${aluno._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+          body: JSON.stringify({
           nome: aluno.nome,
           RA: aluno.RA,
           sala: aluno.sala,
@@ -152,14 +155,24 @@ export default function AlunosSemAcesso() {
 
   if (loading) return <p style={{ padding: '20px', color: '#fff' }}>Carregando alunos...</p>;
 
-  const alunosSemAcesso = alunos.filter((aluno) => aluno.temAcesso === false);
+  // Filtra os alunos sem acesso e, simultaneamente, aplica a busca em tempo real por Nome, Sala ou Ano
+  const alunosFiltrados = alunos
+    .filter((aluno) => aluno.temAcesso === false)
+    .filter((aluno) => {
+      const termo = termoBusca.toLowerCase();
+      return (
+        aluno.nome.toLowerCase().includes(termo) ||
+        aluno.sala.toLowerCase().includes(termo) ||
+        aluno.ano.toLowerCase().includes(termo)
+      );
+    });
 
   return (
     <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif' }}>
       <h2 style={{ marginBottom: '20px', color: '#fff' }}>Controle de Atividades - Alunos Sem Acesso</h2>
       
       {/* SEÇÃO DO FORMULÁRIO DE CADASTRO / EDIÇÃO */}
-      <form onSubmit={handleSalvarFormulario} style={{ background: '#1e1e1e', padding: '20px', borderRadius: '8px', marginBottom: '30px', display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <form onSubmit={handleSalvarFormulario} style={{ background: '#1e1e1e', padding: '20px', borderRadius: '8px', marginBottom: '20px', display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', flex: 2, minWidth: '200px' }}>
           <label style={{ marginBottom: '6px', fontSize: '14px', color: '#aaa' }}>Nome do Aluno</label>
           <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} style={{ padding: '8px', background: '#2d2d2d', color: '#fff', border: '1px solid #444', borderRadius: '4px' }} placeholder="Ex: João Silva" />
@@ -192,7 +205,27 @@ export default function AlunosSemAcesso() {
         </div>
       </form>
 
-      {/* TABELA DE ALUNOS COM COLUNA DE AÇÕES CORRIGIDA */}
+      {/* BARRA DE PESQUISA ADICIONADA */}
+      <div style={{ position: 'relative', marginBottom: '20px', maxWidth: '400px' }}>
+        <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
+        <input 
+          type="text" 
+          value={termoBusca}
+          onChange={(e) => setTermoBusca(e.target.value)}
+          placeholder="Buscar aluno por nome, sala ou ano..." 
+          style={{ 
+            width: '100%', 
+            padding: '10px 10px 10px 40px', 
+            background: '#1e1e1e', 
+            color: '#fff', 
+            border: '1px solid #444', 
+            borderRadius: '6px',
+            boxSizing: 'border-box'
+          }} 
+        />
+      </div>
+
+      {/* TABELA DE ALUNOS COM ARRAY FILTRADO */}
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: '#1e1e1e', borderRadius: '8px', overflow: 'hidden' }}>
         <thead>
           <tr style={{ background: '#2d2d2d', color: '#aaa' }}>
@@ -203,8 +236,8 @@ export default function AlunosSemAcesso() {
             <th style={{ padding: '12px 16px', textAlign: 'center', width: '120px' }}>Ações</th>
           </tr>
         </thead>
-        <tbody>
-          {alunosSemAcesso.map((aluno) => (
+  <tbody>
+          {alunosFiltrados.map((aluno) => (
             <tr key={aluno._id} style={{ borderBottom: '1px solid #333' }}>
               <td style={{ padding: '12px 16px', fontWeight: 'bold' }}>{aluno.nome}</td>
               <td style={{ padding: '12px 16px' }}>{aluno.sala}</td>
@@ -216,7 +249,7 @@ export default function AlunosSemAcesso() {
                   onChange={() => handleCheckboxChange(aluno)}
                   style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                 />
-              </td>
+              </td> {/* FECHAMENTO DA TD DO CHECKBOX */}
               <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                 <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
                   <button 
@@ -238,10 +271,14 @@ export default function AlunosSemAcesso() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table> {/* FECHAMENTO DA TABELA */}
 
-      {alunosSemAcesso.length === 0 && (
-        <p style={{ textAlign: 'center', marginTop: '20px', color: '#888' }}>Nenhum aluno cadastrado sem acesso.</p>
+      {alunosFiltrados.length === 0 && (
+        <p style={{ textAlign: 'center', marginTop: '20px', color: '#888' }}>
+          {alunos.filter(a => !a.temAcesso).length === 0
+            ? 'Nenhum aluno cadastrado sem acesso.'
+            : 'Nenhum resultado encontrado para a pesquisa.'}
+        </p>
       )}
     </div>
   );
