@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import NotebooksPage from './pages/NotebooksPage'
 import AlunosPage from './pages/AlunosPage'
+import AlunosSemAcesso from './pages/AlunosSemAcesso'
 
 export default function App() {
   return (
@@ -12,6 +13,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<NotebooksPage />} />
             <Route path="/alunos" element={<AlunosPage />} />
+             <Route path="/alunosSemAcesso" element={<AlunosSemAcesso />} />
+
           </Routes>
         </main>
       </div>

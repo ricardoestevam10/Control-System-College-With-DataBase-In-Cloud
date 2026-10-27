@@ -2,9 +2,11 @@ import alunoService from "../services/alunoService.js";
 
 const createAluno = async (req, res) => {
     try { 
-        const { nome, RA, sala, ano } = req.body;
+        // Adicionado 'temAcesso' recebido do formulário front-end
+        const { nome, RA, sala, ano, temAcesso } = req.body;
 
-        await alunoService.Create(nome, RA, sala, ano);
+        // Repassando 'temAcesso' para o service criar o registro no banco
+        await alunoService.Create(nome, RA, sala, ano, temAcesso);
         
         console.log("Novo aluno Criado");
         res.sendStatus(201);
@@ -27,10 +29,12 @@ const getAllAlunos = async (req, res) => {
 
 const updateAluno = async (req, res) => {
     try {
-        const { id } = req.params; // Ou req.body, dependendo de como você recebe o ID
-        const { nome, RA, sala, ano } = req.body;
+        const { id } = req.params; 
+        // Adicionado também o 'temAcesso' aqui para manter a consistência dos dados ao atualizar
+        const { nome, RA, sala, ano, atividadeEntregue, temAcesso } = req.body;
 
-        await alunoService.update(id, nome, RA, sala, ano); // Certifique-se de que a função 'update' existe no service
+        // Passando todos os parâmetros atualizados para o seu service
+        await alunoService.update(id, nome, RA, sala, ano, atividadeEntregue, temAcesso); 
 
         console.log(`Aluno com ID ${id} atualizado`);
         res.sendStatus(200);

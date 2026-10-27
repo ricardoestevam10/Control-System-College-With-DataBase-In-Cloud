@@ -2,13 +2,14 @@ import Aluno from "../model/Alunos.js";
 
 class alunoService {
     // Método para cadastrar um aluno
-    async Create(nome, RA, sala, ano) {
+    async Create(nome, RA, sala, ano, temAcesso) {
         try {
             const newAluno = new Aluno({
                 nome,
                 RA,
                 sala,
-                ano
+                ano,
+                temAcesso // Salvando o status de acesso no cadastro do aluno
             });
             await newAluno.save();
         } catch (error) {
@@ -29,13 +30,15 @@ class alunoService {
     }
 
     // Método para atualizar um aluno
-    async update(id, nome, RA, sala, ano) {
+    async update(id, nome, RA, sala, ano, atividadeEntregue, temAcesso) {
         try {
             await Aluno.findByIdAndUpdate(id, {
                 nome,
                 RA,
                 sala,
-                ano
+                ano,
+                atividadeEntregue,
+                temAcesso // Mantendo o status de acesso atualizado
             }, { new: true }); // O `{ new: true }` retorna o documento já atualizado, caso queira usar
         } catch (error) {
             console.log(error);
