@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pencil, Trash2, Search } from 'lucide-react'; // Adicionado o ícone Search
+import { Pencil, Trash2, Search } from 'lucide-react';
 
 interface Aluno {
   _id: string;
@@ -15,8 +15,9 @@ export default function AlunosSemAcesso() {
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
-  // Novo estado para armazenar o termo digitado na barra de busca
+  // Estados para as ferramentas de filtragem e busca
   const [termoBusca, setTermoBusca] = useState<string>('');
+  const [anoSelecionado, setAnoSelecionado] = useState<string>('');
 
   // Estados para o formulário de cadastro/edição rápido
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -135,7 +136,7 @@ export default function AlunosSemAcesso() {
       const response = await fetch(`http://localhost:8080/aluno/${aluno._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        body: JSON.stringify({
           nome: aluno.nome,
           RA: aluno.RA,
           sala: aluno.sala,
@@ -155,22 +156,86 @@ export default function AlunosSemAcesso() {
 
   if (loading) return <p style={{ padding: '20px', color: '#fff' }}>Carregando alunos...</p>;
 
-  // Filtra os alunos sem acesso e, simultaneamente, aplica a busca em tempo real por Nome, Sala ou Ano
+  // Extrai dinamicamente todos os anos existentes na lista de alunos sem acesso para preencher o select
+  const anosDisponiveis = Array.from(
+    new Set(
+      alunos
+        .filter((aluno) => aluno.temAcesso === false)
+        .map((aluno) => aluno.ano)
+    )
+  ).sort();
+
+  // Executa os filtros combinados por Texto (Nome/Sala) e Ano Letivo de forma simultânea
   const alunosFiltrados = alunos
     .filter((aluno) => aluno.temAcesso === false)
     .filter((aluno) => {
+      // Filtro por ano selecionado
+      if (anoSelecionado !== '' && aluno.ano !== anoSelecionado) {
+        return false;
+      }
+
+      // Filtro de termo digitado (procura por Nome ou Sala)
       const termo = termoBusca.toLowerCase();
       return (
         aluno.nome.toLowerCase().includes(termo) ||
-        aluno.sala.toLowerCase().includes(termo) ||
-        aluno.ano.toLowerCase().includes(termo)
+        aluno.sala.toLowerCase().includes(termo)
       );
     });
 
   return (
-    <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif' }}>
-      <h2 style={{ marginBottom: '20px', color: '#fff' }}>Controle de Atividades - Alunos Sem Acesso</h2>
+    <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif', width: '80vw' }}>
+      <h2 style={{ marginBottom: '20px', color: '#000' }}>Controle de Atividades - Alunos Sem Acesso</h2>
       
+      {/* SEÇÃO DE BUSCA POR TEXTO E FILTRAGEM POR ANO */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', maxWidth: '100%', flexWrap: 'wrap' }}>
+        
+        {/* Barra de Pesquisa de Texto */}
+        <div style={{ position: 'relative', flex: 2, minWidth: '250px' }}>
+          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
+          <input 
+            type="text" 
+            value={termoBusca}
+            onChange={(e) => setTermoBusca(e.target.value)}
+            placeholder="Buscar aluno por nome ou sala..." 
+            style={{ 
+              width: '100%', 
+              padding: '10px 10px 10px 40px', 
+              background: '#1e1e1e', 
+              color: '#fff', 
+              border: '1px solid #444', 
+              borderRadius: '6px',
+              boxSizing: 'border-box'
+            }} 
+          />
+        </div>
+
+        {/* Menu Seletor Dinâmico por Ano */}
+        <div style={{ flex: 1, minWidth: '150px' }}>
+          <select
+            value={anoSelecionado}
+            onChange={(e) => setAnoSelecionado(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px',
+              background: '#1e1e1e',
+              color: '#fff',
+              border: '1px solid #444',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              boxSizing: 'border-box'
+            }}
+          >
+            <option value="">Todos os anos</option>
+            {anosDisponiveis.map((anoItem) => (
+              <option key={anoItem} value={anoItem}>
+                Ano: {anoItem}
+              </option>
+            ))}
+          </select>
+        </div>
+
+      </div>
+
       {/* SEÇÃO DO FORMULÁRIO DE CADASTRO / EDIÇÃO */}
       <form onSubmit={handleSalvarFormulario} style={{ background: '#1e1e1e', padding: '20px', borderRadius: '8px', marginBottom: '20px', display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', flex: 2, minWidth: '200px' }}>
@@ -205,25 +270,10 @@ export default function AlunosSemAcesso() {
         </div>
       </form>
 
+      {/* TABELA DE ALUNOS COM AS TAGS E ESTRUTURA DE CORREÇÃO INTEGRADAS */}
+
       {/* BARRA DE PESQUISA ADICIONADA */}
-      <div style={{ position: 'relative', marginBottom: '20px', maxWidth: '400px' }}>
-        <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
-        <input 
-          type="text" 
-          value={termoBusca}
-          onChange={(e) => setTermoBusca(e.target.value)}
-          placeholder="Buscar aluno por nome, sala ou ano..." 
-          style={{ 
-            width: '100%', 
-            padding: '10px 10px 10px 40px', 
-            background: '#1e1e1e', 
-            color: '#fff', 
-            border: '1px solid #444', 
-            borderRadius: '6px',
-            boxSizing: 'border-box'
-          }} 
-        />
-      </div>
+    
 
       {/* TABELA DE ALUNOS COM ARRAY FILTRADO */}
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: '#1e1e1e', borderRadius: '8px', overflow: 'hidden' }}>
