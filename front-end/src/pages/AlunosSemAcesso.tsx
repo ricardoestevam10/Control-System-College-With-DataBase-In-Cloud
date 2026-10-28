@@ -1,5 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Pencil, Trash2, Search } from 'lucide-react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { GraduationCap, Plus, Search, User, Hash, School, DoorOpen, Save, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
+import type { FormEvent } from 'react'
+import Modal from '../components/Modal'
+import ConfirmDialog from '../components/ConfirmDialog'
+import Toast, { type ToastData } from '../components/Toast'
+import { Loading, ErrorState, Empty } from '../components/StatusViews'
 
 interface Aluno {
   _id: string;
@@ -12,125 +17,160 @@ interface Aluno {
 }
 
 export default function AlunosSemAcesso() {
-  const [alunos, setAlunos] = useState<Aluno[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [alunos, setAlunos] = useState<Aluno[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   
-  // Estados para as ferramentas de filtragem e busca
-  const [termoBusca, setTermoBusca] = useState<string>('');
-  const [anoSelecionado, setAnoSelecionado] = useState<string>('');
+  const [busca, setBusca] = useState('')
+  const [anoSelecionado, setAnoSelecionado] = useState('')
+  const [toast, setToast] = useState<ToastData | null>(null)
 
-  // Estados para o formulário de cadastro/edição rápido
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [nome, setNome] = useState('');
-  const [ra, setRa] = useState('');
-  const [sala, setSala] = useState('');
-  const [ano, setAno] = useState('');
+  const [form, setForm] = useState<{ open: boolean; editing: Aluno | null }>({ open: false, editing: null })
+  const [nome, setNome] = useState('')
+  const [ra, setRa] = useState('')
+  const [sala, setSala] = useState('')
+  const [ano, setAno] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  // 1. Busca os alunos do banco ao carregar a página
-  const buscarAlunos = () => {
-    fetch('http://localhost:8080/alunos')
-      .then((res) => res.json())
-      .then((data) => {
-        setAlunos(data.alunos || data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Erro ao buscar alunos:", err);
-        setLoading(false);
-      });
-  };
+  const [toDelete, setToDelete] = useState<Aluno | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const buscarAlunos = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('http://localhost:8080/alunos')
+      if (!res.ok) throw new Error('Erro ao buscar a lista de alunos do servidor.')
+      const data = await res.json()
+      setAlunos(data.alunos || data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro inesperado.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    buscarAlunos();
-  }, []);
+    buscarAlunos()
+  }, [buscarAlunos])
 
-  // 2. Função para Salvar (Cadastrar Novo ou Atualizar Existente)
-  const handleSalvarFormulario = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nome || !sala || !ano) {
-      alert("Por favor, preencha o Nome, Sala e Ano!");
-      return;
-    }
+  const anosDisponiveis = useMemo(() => {
+    return Array.from(
+      new Set(
+        alunos
+          .filter((aluno) => aluno.temAcesso === false)
+          .map((aluno) => aluno.ano)
+      )
+    ).sort()
+  }, [alunos])
 
-    const dadosAluno = {
-      nome,
-      RA: ra ? Number(ra) : undefined,
-      sala,
-      ano,
-      temAcesso: false
-    };
+  const alunosFiltrados = useMemo(() => {
+    return alunos
+      .filter((aluno) => aluno.temAcesso === false)
+      .filter((aluno) => {
+        if (anoSelecionado !== '' && aluno.ano !== anoSelecionado) {
+          return false
+        }
 
+        const q = busca.trim().toLowerCase()
+        if (!q) return true
+
+        return (
+          aluno.nome.toLowerCase().includes(q) ||
+          aluno.sala.toLowerCase().includes(q) ||
+          String(aluno.RA ?? '').includes(q)
+        )
+      })
+  }, [alunos, busca, anoSelecionado])
+
+  function abrirNovo() {
+    setForm({ open: true, editing: null })
+    setNome('')
+    setRa('')
+    setAno('')
+    setSala('')
+    setFormError(null)
+  }
+
+  function abrirEditar(aluno: Aluno) {
+    setForm({ open: true, editing: aluno })
+    setNome(aluno.nome)
+    setRa(aluno.RA ? String(aluno.RA) : '')
+    setSala(aluno.sala)
+    setAno(aluno.ano)
+    setFormError(null)
+  }
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault()
+    if (!nome.trim()) return setFormError('Informe o nome do aluno.')
+    if (!ano.trim()) return setFormError('Informe o ano letivo.')
+    if (!sala.trim()) return setFormError('Informe a sala.')
+    if (ra && Number.isNaN(Number(ra))) return setFormError('O RA deve conter apenas números.')
+
+    setSaving(true)
+    setFormError(null)
     try {
-      if (editingId) {
-        const response = await fetch(`http://localhost:8080/aluno/${editingId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(dadosAluno)
-        });
-
-        if (!response.ok) throw new Error();
-        setEditingId(null);
-      } else {
-        const response = await fetch('http://localhost:8080/aluno', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(dadosAluno)
-        });
-
-        if (!response.ok) throw new Error();
+      const dadosAluno = {
+        nome: nome.trim(),
+        RA: ra ? Number(ra) : undefined,
+        sala: sala.trim(),
+        ano: ano.trim(),
+        temAcesso: false
       }
 
-      setNome('');
-      setRa('');
-      setSala('');
-      setAno('');
-      buscarAlunos();
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao salvar os dados do aluno no servidor.");
+      const url = form.editing 
+        ? `http://localhost:8080/aluno/${form.editing._id}` 
+        : 'http://localhost:8080/aluno'
+      
+      const response = await fetch(url, {
+        method: form.editing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dadosAluno)
+      })
+
+      if (!response.ok) throw new Error('Não foi possível salvar as alterações no servidor.')
+
+      setForm({ open: false, editing: null })
+      setToast({ kind: 'ok', text: form.editing ? 'Aluno atualizado.' : 'Aluno cadastrado.' })
+      await buscarAlunos()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Erro inesperado.')
+    } finally {
+      setSaving(false)
     }
-  };
+  }
 
-  // 3. Função para carregar dados do aluno no formulário para editar
-  const handleIniciarEdicao = (aluno: Aluno) => {
-    setEditingId(aluno._id);
-    setNome(aluno.nome);
-    setRa(aluno.RA ? String(aluno.RA) : '');
-    setSala(aluno.sala);
-    setAno(aluno.ano);
-  };
-
-  // 4. Função para deletar um aluno
-  const handleDelete = async (id: string, nomeAluno: string) => {
-    if (!window.confirm(`Tem certeza que deseja apagar o aluno ${nomeAluno}?`)) {
-      return;
-    }
-
+  async function excluir() {
+    if (!toDelete) return
+    setDeleting(true)
     try {
-      const response = await fetch(`http://localhost:8080/aluno/${id}`, {
+      const response = await fetch(`http://localhost:8080/aluno/${toDelete._id}`, {
         method: 'DELETE'
-      });
+      })
 
-      if (response.ok) {
-        buscarAlunos();
-      } else {
-        alert("Erro ao deletar o aluno no servidor.");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Erro de conexão ao tentar deletar.");
+      if (!response.ok) throw new Error('Erro ao tentar remover o registro.')
+
+      setToDelete(null)
+      setToast({ kind: 'ok', text: 'Aluno excluído.' })
+      await buscarAlunos()
+    } catch (err) {
+      setToDelete(null)
+      setToast({ kind: 'erro', text: err instanceof Error ? err.message : 'Erro inesperado.' })
+    } finally {
+      setDeleting(false)
     }
-  };
+  }
 
-  // 5. Função do checkbox de atividade concluída
-  const handleCheckboxChange = async (aluno: Aluno) => {
-    const novoStatus = !aluno.atividadeEntregue;
+  async function handleCheckboxChange(aluno: Aluno) {
+    const novoStatus = !aluno.atividadeEntregue
 
     setAlunos((prevAlunos) =>
       prevAlunos.map((a) =>
         a._id === aluno._id ? { ...a, atividadeEntregue: novoStatus } : a
       )
-    );
+    )
 
     try {
       const response = await fetch(`http://localhost:8080/aluno/${aluno._id}`, {
@@ -144,192 +184,173 @@ export default function AlunosSemAcesso() {
           atividadeEntregue: novoStatus,
           temAcesso: aluno.temAcesso
         }),
-      });
+      })
 
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error()
+      setToast({ kind: 'ok', text: novoStatus ? 'Atividade marcada como entregue.' : 'Entrega desmarcada.' })
     } catch (error) {
-      console.error(error);
-      alert("Não foi possível salvar o check.");
-      buscarAlunos();
+      console.error(error)
+      setToast({ kind: 'erro', text: 'Não foi possível salvar o status da atividade.' })
+      buscarAlunos()
     }
-  };
-
-  if (loading) return <p style={{ padding: '20px', color: '#fff' }}>Carregando alunos...</p>;
-
-  // Extrai dinamicamente todos os anos existentes na lista de alunos sem acesso para preencher o select
-  const anosDisponiveis = Array.from(
-    new Set(
-      alunos
-        .filter((aluno) => aluno.temAcesso === false)
-        .map((aluno) => aluno.ano)
-    )
-  ).sort();
-
-  // Executa os filtros combinados por Texto (Nome/Sala) e Ano Letivo de forma simultânea
-  const alunosFiltrados = alunos
-    .filter((aluno) => aluno.temAcesso === false)
-    .filter((aluno) => {
-      // Filtro por ano selecionado
-      if (anoSelecionado !== '' && aluno.ano !== anoSelecionado) {
-        return false;
-      }
-
-      // Filtro de termo digitado (procura por Nome ou Sala)
-      const termo = termoBusca.toLowerCase();
-      return (
-        aluno.nome.toLowerCase().includes(termo) ||
-        aluno.sala.toLowerCase().includes(termo)
-      );
-    });
+  }
 
   return (
-    <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif', width: '80vw' }}>
-      <h2 style={{ marginBottom: '20px', color: '#000' }}>Controle de Atividades - Alunos Sem Acesso</h2>
-      
-      {/* SEÇÃO DE BUSCA POR TEXTO E FILTRAGEM POR ANO */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', maxWidth: '100%', flexWrap: 'wrap' }}>
-        
-        {/* Barra de Pesquisa de Texto */}
-        <div style={{ position: 'relative', flex: 2, minWidth: '250px' }}>
-          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#aaa' }} />
-          <input 
-            type="text" 
-            value={termoBusca}
-            onChange={(e) => setTermoBusca(e.target.value)}
-            placeholder="Buscar aluno por nome ou sala..." 
-            style={{ 
-              width: '100%', 
-              padding: '10px 10px 10px 40px', 
-              background: '#1e1e1e', 
-              color: '#fff', 
-              border: '1px solid #444', 
-              borderRadius: '6px',
-              boxSizing: 'border-box'
-            }} 
-          />
+    <>
+      <header className="page-header">
+        <div>
+          <h1>Controle de Atividades</h1>
+          <p className="muted">Gerencie as entregas e cadastros de alunos sem acesso.</p>
         </div>
+        <button className="btn btn-primary" onClick={abrirNovo} disabled={loading || !!error}>
+          <Plus size={18} /> Novo aluno
+        </button>
+      </header>
 
-        {/* Menu Seletor Dinâmico por Ano */}
-        <div style={{ flex: 1, minWidth: '150px' }}>
-          <select
-            value={anoSelecionado}
-            onChange={(e) => setAnoSelecionado(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px',
-              background: '#1e1e1e',
-              color: '#fff',
-              border: '1px solid #444',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              boxSizing: 'border-box'
-            }}
-          >
-            <option value="">Todos os anos</option>
-            {anosDisponiveis.map((anoItem) => (
-              <option key={anoItem} value={anoItem}>
-                Ano: {anoItem}
-              </option>
-            ))}
-          </select>
-        </div>
+      {loading && <Loading />}
+      {!loading && error && <ErrorState message={error} onRetry={buscarAlunos} />}
 
-      </div>
+      {!loading && !error && (
+        <>
+          <div className="search" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '8px' }}>
+              <Search size={18} />
+              <input
+                type="search"
+                placeholder="Buscar por nome, sala ou RA"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                aria-label="Buscar alunos"
+                style={{ background: 'transparent', border: 'none', width: '100%', color: 'inherit', outline: 'none' }}
+              />
+            </div>
+            
+            <select
+              value={anoSelecionado}
+              onChange={(e) => setAnoSelecionado(e.target.value)}
+              style={{
+                background: 'var(--bg-card, #1e1e1e)',
+                color: 'inherit',
+                border: '1px solid var(--border-color, #333)',
+                borderRadius: '6px',
+                padding: '4px 8px',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">Todos os anos</option>
+              {anosDisponiveis.map((anoItem) => (
+                <option key={anoItem} value={anoItem}>
+                  Ano: {anoItem}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {/* SEÇÃO DO FORMULÁRIO DE CADASTRO / EDIÇÃO */}
-      <form onSubmit={handleSalvarFormulario} style={{ background: '#1e1e1e', padding: '20px', borderRadius: '8px', marginBottom: '20px', display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 2, minWidth: '200px' }}>
-          <label style={{ marginBottom: '6px', fontSize: '14px', color: '#aaa' }}>Nome do Aluno</label>
-          <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} style={{ padding: '8px', background: '#2d2d2d', color: '#fff', border: '1px solid #444', borderRadius: '4px' }} placeholder="Ex: João Silva" />
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: '100px' }}>
-          <label style={{ marginBottom: '6px', fontSize: '14px', color: '#aaa' }}>RA (Opcional)</label>
-          <input type="number" value={ra} onChange={(e) => setRa(e.target.value)} style={{ padding: '8px', background: '#2d2d2d', color: '#fff', border: '1px solid #444', borderRadius: '4px' }} placeholder="Ex: 12345" />
-        </div>
+          {alunos.filter(a => !a.temAcesso).length === 0 ? (
+            <Empty
+              icon={<GraduationCap size={32} />}
+              title="Nenhum aluno sem acesso"
+              hint="Cadastre um aluno para poder gerenciar o controle de atividades manuais."
+              action={
+                <button className="btn btn-primary" onClick={abrirNovo}>
+                  <Plus size={18} /> Novo aluno
+                </button>
+              }
+            />
+          ) : alunosFiltrados.length === 0 ? (
+            <Empty icon={<Search size={32} />} title="Nada encontrado" hint="Tente buscar por outro termo ou ano letivo." />
+          ) : (
+            <ul className="list">
+              {alunosFiltrados.map((aluno) => (
+                <li key={aluno._id} className="row">
+                  <span className="avatar"><User size={20} /></span>
+                  <div className="row-main">
+                    <strong>{aluno.nome}</strong>
+                    <span className="muted">
+                      <School size={14} /> {aluno.ano} · <DoorOpen size={14} /> sala {aluno.sala}
+                      {aluno.RA ? <> · <Hash size={14} /> RA {aluno.RA}</> : null}
+                    </span>
+                  </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: '100px' }}>
-          <label style={{ marginBottom: '6px', fontSize: '14px', color: '#aaa' }}>Sala</label>
-          <input type="text" value={sala} onChange={(e) => setSala(e.target.value)} style={{ padding: '8px', background: '#2d2d2d', color: '#fff', border: '1px solid #444', borderRadius: '4px' }} placeholder="Ex: 3º Ano A" />
-        </div>
+                  <button 
+                    onClick={() => handleCheckboxChange(aluno)}
+                    style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, color: 'inherit' }}
+                  >
+                    {aluno.atividadeEntregue ? (
+                      <span className="tag tag-on"><CheckSquare size={14} /> Atividade Entregue</span>
+                    ) : (
+                      <span className="tag"><Square size={14} /> Pendente</span>
+                    )}
+                  </button>
 
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: '100px' }}>
-          <label style={{ marginBottom: '6px', fontSize: '14px', color: '#aaa' }}>Ano Letivo</label>
-          <input type="text" value={ano} onChange={(e) => setAno(e.target.value)} style={{ padding: '8px', background: '#2d2d2d', color: '#fff', border: '1px solid #444', borderRadius: '4px' }} placeholder="Ex: 2026" />
-        </div>
-
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button type="submit" style={{ padding: '9px 20px', background: editingId ? '#eab308' : '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-            {editingId ? 'Atualizar' : 'Cadastrar'}
-          </button>
-          {editingId && (
-            <button type="button" onClick={() => { setEditingId(null); setNome(''); setRa(''); setSala(''); setAno(''); }} style={{ padding: '9px 15px', background: '#444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-              Cancelar
-            </button>
+                  <div className="row-actions">
+                    <button className="icon-btn" onClick={() => abrirEditar(aluno)} aria-label={`Editar aluno ${aluno.nome}`}>
+                      <Pencil size={18} />
+                    </button>
+                    <button
+                      className="icon-btn danger"
+                      onClick={() => setToDelete(aluno)}
+                      aria-label={`Excluir aluno ${aluno.nome}`}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
-      </form>
-
-      {/* TABELA DE ALUNOS COM AS TAGS E ESTRUTURA DE CORREÇÃO INTEGRADAS */}
-
-      {/* BARRA DE PESQUISA ADICIONADA */}
-    
-
-      {/* TABELA DE ALUNOS COM ARRAY FILTRADO */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: '#1e1e1e', borderRadius: '8px', overflow: 'hidden' }}>
-        <thead>
-          <tr style={{ background: '#2d2d2d', color: '#aaa' }}>
-            <th style={{ padding: '12px 16px' }}>Nome do Aluno</th>
-            <th style={{ padding: '12px 16px' }}>Sala</th>
-            <th style={{ padding: '12px 16px' }}>Ano</th>
-            <th style={{ padding: '12px 16px', textAlign: 'center', width: '120px' }}>Entregou?</th>
-            <th style={{ padding: '12px 16px', textAlign: 'center', width: '120px' }}>Ações</th>
-          </tr>
-        </thead>
-  <tbody>
-          {alunosFiltrados.map((aluno) => (
-            <tr key={aluno._id} style={{ borderBottom: '1px solid #333' }}>
-              <td style={{ padding: '12px 16px', fontWeight: 'bold' }}>{aluno.nome}</td>
-              <td style={{ padding: '12px 16px' }}>{aluno.sala}</td>
-              <td style={{ padding: '12px 16px' }}>{aluno.ano}</td>
-              <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={aluno.atividadeEntregue || false}
-                  onChange={() => handleCheckboxChange(aluno)}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                />
-              </td> {/* FECHAMENTO DA TD DO CHECKBOX */}
-              <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
-                  <button 
-                    onClick={() => handleIniciarEdicao(aluno)} 
-                    style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer', padding: '4px' }}
-                    title="Editar Aluno"
-                  >
-                    <Pencil size={18} />
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(aluno._id, aluno.nome)} 
-                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                    title="Excluir Aluno"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table> {/* FECHAMENTO DA TABELA */}
-
-      {alunosFiltrados.length === 0 && (
-        <p style={{ textAlign: 'center', marginTop: '20px', color: '#888' }}>
-          {alunos.filter(a => !a.temAcesso).length === 0
-            ? 'Nenhum aluno cadastrado sem acesso.'
-            : 'Nenhum resultado encontrado para a pesquisa.'}
-        </p>
+        </>
       )}
-    </div>
-  );
+
+      {form.open && (
+        <Modal
+          title={form.editing ? 'Editar aluno' : 'Novo aluno'}
+          icon={<Plus size={20} />}
+          onClose={() => setForm({ open: false, editing: null })}
+        >
+          <form onSubmit={salvar} noValidate>
+            <label className="field">
+              <span><User size={16} /> Nome completo</span>
+              <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+            </label>
+            <label className="field">
+              <span><Hash size={16} /> RA (opcional)</span>
+              <input inputMode="numeric" value={ra} onChange={(e) => setRa(e.target.value)} />
+            </label>
+            <div className="field-row">
+              <label className="field">
+                <span><School size={16} /> Ano Letivo</span>
+                <input placeholder="Ex: 2026" value={ano} onChange={(e) => setAno(e.target.value)} />
+              </label>
+              <label className="field">
+                <span><DoorOpen size={16} /> Sala</span>
+                <input placeholder="Ex: 3º Ano A" value={sala} onChange={(e) => setSala(e.target.value)} />
+              </label>
+            </div>
+            {formError && <p className="form-error" role="alert">{formError}</p>}
+            <footer className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={() => setForm({ open: false, editing: null })}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                <Save size={18} /> {saving ? 'Salvando…' : 'Salvar aluno'}
+              </button>
+            </footer>
+          </form>
+        </Modal>
+      )}
+
+      {toDelete && (
+        <ConfirmDialog
+          title="Excluir aluno"
+          message={`Excluir o aluno ${toDelete.nome}? Essa ação não pode ser desfeita.`}
+          busy={deleting}
+          onConfirm={excluir}
+          onCancel={() => setToDelete(null)}
+        />
+      )}
+
+      <Toast toast={toast} onDone={() => setToast(null)} />
+    </>
+  )
 }
